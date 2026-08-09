@@ -98,6 +98,19 @@ Generator difficulty keys off **pace** (current speed mapped onto the tuning
 scale), not raw distance, so retuning the speed ramp can never silently
 reshuffle how hard the track is at a given moment.
 
+## Leaderboard
+
+Runs are ranked by **distance** on two RUN boards (all-time and daily), reached
+from the menu's RANKS button. The board's server rules drive the client policy
+rather than being discovered as errors: runs under 10 s are never sent, a run is
+only submitted when it beat the player's own banked best (the boards keep best),
+and the sender backs off inside the 60 s rate-limit window. A score token minted
+at run start rides along so the server can sanity-check the duration.
+
+Submission never blocks the results screen, the whole feature fails closed with
+a plain explanation when there is no RUN host, and other players' usernames are
+always written as text, never markup.
+
 ## Audio
 
 The score is **"Rooftop Run"** (`src/audio/assets/rooftop-run.mp3`), supplied by

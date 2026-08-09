@@ -13,6 +13,9 @@ interface Window {
         pause(): void;
         resume(): void;
         freezeSimulation(): void;
+        /** Mean ms per render phase since the last call (development only). */
+        phaseTimings(): Record<string, number>;
+        previewLeaderboard(rows: { rank: number; name: string; distance: number }[], myRank: number): void;
         setReducedMotion(enabled: boolean): void;
         showMilestone(kicker: string, title: string): void;
     };

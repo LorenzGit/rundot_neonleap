@@ -26,6 +26,7 @@ import {
     maybeShowResultsInterstitial,
     refreshInterstitialAdAvailability,
 } from "./systems/interstitialAds.ts";
+import { beginLeaderboardRun, loadLeaderboard, submitRun } from "./systems/leaderboard.ts";
 import {
     claimMission,
     missionViews,
@@ -153,6 +154,7 @@ function startRun(): void {
     core.reset({ seed, upgrades: saved.upgrades });
     lastPhase = "running";
     beginSecondWindRun(runKey);
+    beginLeaderboardRun(runKey);
     ftue = new Ftue(saved.progress.controlsSeen);
     scene.setMode("run");
     audioManager.setMode("run");
@@ -279,6 +281,19 @@ function bankRun(snapshot: RunnerSnapshot): ResultsSummary {
     analytics.funnelStep("ftue", 6, { distance: snapshot.distance });
     analytics.funnelStep("engagement", saveSystem.get().records.totalRuns, { distance: snapshot.distance });
     lastBankedSummary = summary;
+    // Ranked after banking, so "is this a personal best?" reads the record the
+    // run just set. Fire-and-forget: the board must never delay the results.
+    void submitRun({
+        distance: snapshot.distance,
+        durationSeconds: snapshot.time,
+        score: snapshot.score,
+        cells: snapshot.cellsThisRun,
+        tier: snapshot.speedTier,
+    }).then((outcome) => {
+        if (outcome.status === "submitted" && outcome.rank !== null) {
+            ui.milestone(`RANK #${outcome.rank}`, "ON THE BOARD");
+        }
+    });
     return summary;
 }
 
@@ -382,7 +397,26 @@ function handleEvent(event: RunnerEvent, snapshot: RunnerSnapshot): void {
 
 /* --------------------------------------------------------------------- frame */
 
+/**
+ * Blocking sheets sit over a blurred backdrop, so the city behind them is
+ * barely visible — but it was still being simulated and composited at full
+ * rate, on top of the sheet's own `backdrop-filter`, which is the most
+ * expensive thing the UI does. Halve the frame rate whenever one is open.
+ * The menu is deliberately excluded: its live city is the first impression.
+ */
+const SHEET_FPS = 30;
+let throttledFor: string | null = null;
+
+function applyFrameBudget(): void {
+    const screen = ui.currentScreen();
+    if (screen === throttledFor) return;
+    throttledFor = screen;
+    const blocking = screen !== "hud" && screen !== "menu";
+    scene.app.ticker.maxFPS = blocking ? SHEET_FPS : 0;
+}
+
 function frame(): void {
+    applyFrameBudget();
     const delta = Math.min(0.05, scene.app.ticker.deltaMS / 1000);
     const profiling = performanceHud.isEnabled();
     const simulationStarted = profiling ? performance.now() : 0;
@@ -490,6 +524,7 @@ async function boot(): Promise<void> {
     await clearPendingReminder();
     void syncDailyReminder();
     audioManager.applySettings(saved.settings);
+    audioManager.preloadMusic();
     audioManager.bindUnlock();
     document.documentElement.dataset.reducedMotion = String(saved.settings.reducedMotion);
     performanceHud.setEnabled(saved.settings.performanceHud);
@@ -611,6 +646,7 @@ async function boot(): Promise<void> {
                 });
             },
             onUiSound: (kind) => audioManager.play(kind === "confirm" ? "confirm" : "ui"),
+            onLoadLeaderboard: (period) => loadLeaderboard(period),
         },
         {
             wallet: () => saveSystem.get().wallet.cells,

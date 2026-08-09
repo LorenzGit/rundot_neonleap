@@ -57,6 +57,9 @@ export const POWERUP_LABELS: Readonly<Record<PowerupKind, string>> = {
     jets: "JET BOOTS",
 };
 
+/** Depth buckets for batching the rain into a few stroke calls. */
+const RAIN_DEPTH_BUCKETS = 4;
+
 const HUD_FONT = '"Avenir Next Condensed", "Arial Narrow", Impact, Haettenschweiler, system-ui, sans-serif';
 
 /**
@@ -404,6 +407,12 @@ export class GameScene {
     private rings: { x: number; y: number; t: number; strength: number }[] = [];
     /** Perched pigeon flocks, keyed by their roof's x0. */
     private readonly birdFlocks = new Map<number, { x: number; y: number; count: number; scaredAt: number }>();
+    /** Rain is drawn in a few depth buckets, one stroke each (see drawRain). */
+    private readonly rainBuckets: number[][] = Array.from({ length: RAIN_DEPTH_BUCKETS }, () => []);
+    private citySignature = "";
+    private flickerWindows: { x: number; y: number; color: number; key: number }[] = [];
+    private phaseMs: Record<string, number> = {};
+    private phaseFrames = 0;
     private ambienceTint = HORIZON_BLOOM;
     private nextLightningAt = 8;
     private lightningT = -1;
@@ -836,6 +845,8 @@ export class GameScene {
     /* ---------------------------------------------------------------- popups */
 
     private addPopup(x: number, y: number, label: string, color: number, size: number): void {
+        const popupStarted = import.meta.env.DEV ? performance.now() : 0;
+        const fresh = this.popupTextPool.length === 0;
         const text =
             this.popupTextPool.pop() ??
             new Text({
@@ -862,6 +873,13 @@ export class GameScene {
         text.alpha = 1;
         this.popupLayer.addChild(text);
         this.popups.push({ text, x, y, life: 0.95, maxLife: 0.95, rise: 34 });
+        if (import.meta.env.DEV) {
+            const cost = performance.now() - popupStarted;
+            const key = fresh ? "popupCreate" : "popupReuse";
+            this.phaseMs[key] = (this.phaseMs[key] ?? 0) + cost;
+            this.phaseMs[`${key}Max`] = Math.max(this.phaseMs[`${key}Max`] ?? 0, cost);
+            this.phaseMs[`${key}N`] = (this.phaseMs[`${key}N`] ?? 0) + 1;
+        }
         if (this.popups.length > 10) {
             const oldest = this.popups.shift();
             if (oldest) this.retirePopup(oldest);
@@ -911,15 +929,38 @@ export class GameScene {
         if (this.mode === "menu") this.menuDrift += delta * 26;
         if (this.deathT >= 0) this.deathT += delta;
 
+        // Per-phase timing, development only: a frame drop is unfixable until
+        // you know which pass spent the milliseconds.
+        const phase = import.meta.env.DEV
+            ? (name: string, run: () => void) => {
+                  const started = performance.now();
+                  run();
+                  this.phaseMs[name] = (this.phaseMs[name] ?? 0) + (performance.now() - started);
+              }
+            : (_name: string, run: () => void) => run();
+
         this.updateCamera(snapshot, delta);
-        this.drawSky(delta);
+        phase("sky", () => this.drawSky(delta));
         this.updateParallax();
-        this.drawWorld(snapshot);
-        this.drawRunner(snapshot, delta);
-        this.drawParticles(delta);
-        this.drawRain(delta, speed);
-        this.drawOverlay(snapshot, delta);
-        this.updatePopups(delta);
+        phase("world", () => this.drawWorld(snapshot));
+        phase("runner", () => this.drawRunner(snapshot, delta));
+        phase("particles", () => this.drawParticles(delta));
+        phase("rain", () => this.drawRain(delta, speed));
+        phase("overlay", () => this.drawOverlay(snapshot, delta));
+        phase("popups", () => this.updatePopups(delta));
+        this.phaseFrames += 1;
+    }
+
+    /** Mean milliseconds per phase since the last read, then resets. */
+    drainPhaseTimings(): Record<string, number> {
+        const frames = Math.max(1, this.phaseFrames);
+        const out: Record<string, number> = { frames: this.phaseFrames };
+        for (const [name, total] of Object.entries(this.phaseMs)) {
+            out[name] = Number((total / frames).toFixed(3));
+        }
+        this.phaseMs = {};
+        this.phaseFrames = 0;
+        return out;
     }
 
     private updateCamera(snapshot: RunnerSnapshot, delta: number): void {
@@ -1020,20 +1061,24 @@ export class GameScene {
 
     /* ------------------------------------------------------------ the city */
 
-    private drawWorld(snapshot: RunnerSnapshot): void {
+    /**
+     * The city's masonry — faces, windows, parapets, pipes, rims, streaks and
+     * district dressing — does not move relative to the world container and
+     * does not animate. Re-tessellating it every frame was the single most
+     * expensive thing this renderer did; it now rebuilds only when the set of
+     * visible roofs actually changes (roughly once a second at speed).
+     */
+    private rebuildStaticCity(snapshot: RunnerSnapshot): void {
+        const signature = snapshot.world.roofs.map((roof) => `${roof.x0}:${roof.top}`).join("|");
+        if (signature === this.citySignature) return;
+        this.citySignature = signature;
+
         const buildings = this.buildingGraphics;
         const rim = this.rimGraphics;
-        const props = this.propGraphics;
-        const cells = this.cellGraphics;
         buildings.clear();
         rim.clear();
-        props.clear();
-        cells.clear();
-        this.glowPool.begin();
-        this.barPool.begin();
-
+        this.flickerWindows = [];
         const bottom = KILL_PLANE + 240;
-        const flowGlow = 0.5 + snapshot.flow.tier * 0.14;
 
         for (const roof of snapshot.world.roofs) {
             const width = roof.x1 - roof.x0;
@@ -1045,6 +1090,7 @@ export class GameScene {
             // Lit windows, deterministic per roof so they do not shimmer.
             const key = Math.round(roof.x0);
             const columns = Math.floor(width / 46);
+            const cool = mixColor(FACE_WINDOW_COOL, accent, 0.5);
             for (let c = 0; c < columns; c += 1) {
                 for (let row = 0; row < 7; row += 1) {
                     const cellKey = key * 13 + c * 7 + row * 101;
@@ -1053,11 +1099,14 @@ export class GameScene {
                     const wx = roof.x0 + 20 + c * 46 + hash01(cellKey + 1) * 10;
                     const wy = roof.top + 46 + row * 64 + hash01(cellKey + 2) * 16;
                     if (wx + 14 > roof.x1 - 8 || wy > bottom - 40) continue;
-                    const flicker = roll < 0.02 ? 0.5 + 0.5 * Math.abs(Math.sin(this.time * 7 + cellKey)) : 1;
-                    const cool = mixColor(FACE_WINDOW_COOL, accent, 0.5);
-                    buildings
-                        .rect(wx, wy, 13, 18)
-                        .fill({ color: roll < 0.05 ? cool : FACE_WINDOW_WARM, alpha: 0.16 * flicker });
+                    const color = roll < 0.05 ? cool : FACE_WINDOW_WARM;
+                    // The rare flickering ones move to the animated layer so
+                    // the other ~98% can stay baked.
+                    if (roll < 0.02) {
+                        this.flickerWindows.push({ x: wx, y: wy, color, key: cellKey });
+                        continue;
+                    }
+                    buildings.rect(wx, wy, 13, 18).fill({ color, alpha: 0.16 });
                 }
             }
             // Parapet lip.
@@ -1094,15 +1143,10 @@ export class GameScene {
                     alpha: 0.06 + hash01(streakKey + 2) * 0.08,
                 });
             }
-            // The neon rim in the district's colour: crisp line + glow bar.
+            // The neon rim in the district's colour.
             rim.rect(roof.x0, roof.top - 2, width, 3).fill({ color: accent, alpha: 1 });
             rim.rect(roof.x0, roof.top - 2, 3.4, 14).fill({ color: accent, alpha: 0.8 });
             rim.rect(roof.x1 - 3.4, roof.top - 2, 3.4, 14).fill({ color: accent, alpha: 0.8 });
-            const barSprite = this.barPool.get();
-            barSprite.tint = accent;
-            barSprite.position.set((roof.x0 + roof.x1) / 2, roof.top - 2);
-            barSprite.scale.set(width / 256, 0.74);
-            barSprite.alpha = 0.62 * flowGlow;
             // A faint edge drop light down each face.
             rim.rect(roof.x0, roof.top, 2.4, Math.min(150, bottom - roof.top)).fill({ color: accent, alpha: 0.2 });
             rim.rect(roof.x1 - 2.4, roof.top, 2.4, Math.min(150, bottom - roof.top)).fill({
@@ -1110,8 +1154,39 @@ export class GameScene {
                 alpha: 0.2,
             });
             this.drawDistrictProps(roof.x0, roof.x1, roof.top, district.index, accent, second);
+        }
+    }
+
+    private drawWorld(snapshot: RunnerSnapshot): void {
+        const props = this.propGraphics;
+        const cells = this.cellGraphics;
+        props.clear();
+        cells.clear();
+        this.glowPool.begin();
+        this.barPool.begin();
+
+        this.rebuildStaticCity(snapshot);
+
+        const flowGlow = 0.5 + snapshot.flow.tier * 0.14;
+
+        // The handful of animated windows, over the baked masonry.
+        for (const window of this.flickerWindows) {
+            const flicker = 0.5 + 0.5 * Math.abs(Math.sin(this.time * 7 + window.key));
+            props.rect(window.x, window.y, 13, 18).fill({ color: window.color, alpha: 0.16 * flicker });
+        }
+
+        for (const roof of snapshot.world.roofs) {
+            // The rim's additive glow tracks flow, so it stays per-frame — but
+            // it is a pooled sprite, not geometry, so it costs almost nothing.
+            const barSprite = this.barPool.get();
+            barSprite.tint = districtAt(roof.x0).accent;
+            barSprite.position.set((roof.x0 + roof.x1) / 2, roof.top - 2);
+            barSprite.scale.set((roof.x1 - roof.x0) / 256, 0.74);
+            barSprite.alpha = 0.62 * flowGlow;
 
             // Pigeons roost on long roofs and scatter when the runner arrives.
+            const width = roof.x1 - roof.x0;
+            const key = Math.round(roof.x0);
             if (width > 360 && !this.birdFlocks.has(key) && hash01(key * 41 + 9) < 0.5) {
                 const clearOfObstacles = (bx: number): boolean =>
                     !snapshot.world.obstacles.some((entry) => bx > entry.x - 40 && bx < entry.x + entry.w + 40);
@@ -1870,6 +1945,7 @@ export class GameScene {
     private drawRain(delta: number, speed: number): void {
         const g = this.rainGraphics;
         g.clear();
+        const buckets = this.rainBuckets;
         const w = this.viewport.designWidth;
         const windX = -(speed * 0.4 + 60);
         for (const drop of this.rain) {
@@ -1882,8 +1958,25 @@ export class GameScene {
             if (drop.x < -160) drop.x += w + 300;
             const lengthX = windX * drop.depth * 0.05;
             const lengthY = (700 + speed * 0.25) * drop.depth * 0.05;
-            g.moveTo(drop.x, drop.y).lineTo(drop.x + lengthX, drop.y + lengthY);
-            g.stroke({ color: RAIN, width: drop.depth, alpha: 0.05 + drop.depth * 0.08 });
+            // Bucket by depth so the whole shower is a handful of stroke calls
+            // instead of one per drop — same look, a fraction of the geometry.
+            const bucket = Math.min(
+                RAIN_DEPTH_BUCKETS - 1,
+                Math.floor(((drop.depth - 0.5) / 0.9) * RAIN_DEPTH_BUCKETS),
+            );
+            const bucketPath = buckets[bucket];
+            if (bucketPath) {
+                bucketPath.push(drop.x, drop.y, drop.x + lengthX, drop.y + lengthY);
+            }
+        }
+        for (const [index, path] of buckets.entries()) {
+            if (path.length === 0) continue;
+            for (let i = 0; i < path.length; i += 4) {
+                g.moveTo(path[i] ?? 0, path[i + 1] ?? 0).lineTo(path[i + 2] ?? 0, path[i + 3] ?? 0);
+            }
+            const depth = 0.5 + ((index + 0.5) / RAIN_DEPTH_BUCKETS) * 0.9;
+            g.stroke({ color: RAIN, width: depth, alpha: 0.05 + depth * 0.08 });
+            path.length = 0;
         }
     }
 
@@ -1896,6 +1989,9 @@ export class GameScene {
         // FOCUS: violet breathing vignette.
         const focusTarget = snapshot.power?.kind === "focus" ? 0.16 + Math.sin(this.time * 3) * 0.04 : 0;
         this.focusVignette.alpha += (focusTarget - this.focusVignette.alpha) * 0.12;
+        // An invisible sprite still blends a full viewport of pixels on the
+        // GPU. Take it out of the display list until FOCUS actually needs it.
+        this.focusVignette.visible = this.focusVignette.alpha > 0.004;
 
         // RUSH: magenta speed lines racing past the screen edges.
         const lines = this.speedLineGraphics;

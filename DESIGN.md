@@ -323,8 +323,29 @@ gameplay.
   daily checks, simulate, typecheck, production build) plus
   `node scripts/visual-qa.mjs` screenshot gates.
 
+## 15b. Leaderboard
+
+Distance is the ranked metric — the number the game is about and the one the
+menu already calls BEST. Two RUN boards: `default_alltime` and `default_daily`,
+both keep-best, highest-first.
+
+The board's own rules drive the submit policy, enforced client-side so a player
+never meets a rejection they cannot act on:
+
+- runs under **10 s** are refused by the server, so they are never sent;
+- submissions are rate limited to **one per 60 s**, so the game only sends a
+  run that beat the player's banked best — the only run whose rank can change —
+  and backs off silently inside the window;
+- a score token is minted at run start and attached when it arrives, so the
+  server can sanity-check the duration.
+
+Everything is fail-closed and off the critical path: no host, no board, and the
+screen says so rather than pretending. Submission never blocks the results
+screen, and a rank landing after the fact arrives as a milestone callout.
+Usernames come from other players and are always written as text, never markup.
+
 ## 16. Explicitly out of scope (v1)
 
-- Portrait layout, multiplayer, leaderboards, seeded "daily track" events,
+- Portrait layout, multiplayer, seeded "daily track" events,
   cosmetic shop beyond the NEON CORE trail, text localization beyond the
   single English table the formatter already routes through.

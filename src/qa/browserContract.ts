@@ -94,6 +94,20 @@ export function installBrowserQaContract(deps: {
             ui.showRunning();
         },
         freezeSimulation,
+        phaseTimings: () => scene.drainPhaseTimings(),
+        /** Paints a synthetic board so the populated layout can be reviewed. */
+        previewLeaderboard: (rows, myRank) => {
+            ui.showLeaderboardScreen();
+            ui.renderLeaderboard({
+                available: true,
+                loading: false,
+                period: "alltime",
+                rows: rows.map((row) => ({ ...row, isYou: row.rank === myRank })),
+                myRank,
+                totalPlayers: 1240,
+                message: "",
+            });
+        },
         setReducedMotion: (enabled) => scene.setReducedMotion(enabled),
         showMilestone: (kicker, title) => ui.milestone(kicker, title),
     };

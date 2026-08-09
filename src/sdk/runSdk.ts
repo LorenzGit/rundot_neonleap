@@ -1,10 +1,17 @@
 import type {
     Entitlement,
+    GetPagedScoresOptions,
     LiveOpsConfigResult,
+    PagedScoresResponse,
+    PlayerRankOptions,
+    PlayerRankResult,
+    ScoreToken,
     ShopOrderHistoryResponse,
     ShopPurchaseResponse,
     StorefrontResponse,
     Subscription,
+    SubmitScoreParams,
+    SubmitScoreResult,
 } from "@series-inc/rundot-game-sdk";
 import { HapticFeedbackStyle } from "@series-inc/rundot-game-sdk";
 import RundotGameAPI from "@series-inc/rundot-game-sdk/api";
@@ -21,6 +28,7 @@ export interface RunCapabilities {
     shop: boolean;
     entitlements: boolean;
     notifications: boolean;
+    leaderboard: boolean;
 }
 
 const OFFLINE_CAPABILITIES: RunCapabilities = {
@@ -34,6 +42,7 @@ const OFFLINE_CAPABILITIES: RunCapabilities = {
     shop: false,
     entitlements: false,
     notifications: false,
+    leaderboard: false,
 };
 
 let ready = false;
@@ -74,6 +83,7 @@ function snapshotCapabilities(): RunCapabilities {
         shop: namespaceAvailable("shop") && environment?.purchases === true,
         entitlements: namespaceAvailable("entitlements"),
         notifications: namespaceAvailable("notifications"),
+        leaderboard: namespaceAvailable("leaderboard"),
     };
 }
 
@@ -297,6 +307,56 @@ export async function showInterstitialAd(placementId: string, placementName: str
     } catch (error) {
         console.warn("[runSdk] interstitial ad unavailable", error);
         return false;
+    }
+}
+
+/* ------------------------------------------------------------- leaderboard */
+
+/**
+ * Mints the run's score token. The token carries the server's start time, so
+ * a score submitted with it can be checked against a plausible duration.
+ */
+export async function createScoreToken(mode = "default"): Promise<ScoreToken | null> {
+    if (!capabilities.leaderboard || capabilities.mock) return null;
+    try {
+        return await withTimeout(
+            RundotGameAPI.leaderboard.createScoreToken(mode),
+            4000,
+            "leaderboard.createScoreToken",
+        );
+    } catch (error) {
+        console.warn("[runSdk] score token unavailable", error);
+        return null;
+    }
+}
+
+export async function submitLeaderboardScore(params: SubmitScoreParams): Promise<SubmitScoreResult | null> {
+    if (!capabilities.leaderboard || capabilities.mock) return null;
+    try {
+        return await withTimeout(RundotGameAPI.leaderboard.submitScore(params), 6000, "leaderboard.submitScore");
+    } catch (error) {
+        console.warn("[runSdk] score submission failed", error);
+        return null;
+    }
+}
+
+export async function fetchLeaderboardScores(options: GetPagedScoresOptions): Promise<PagedScoresResponse | null> {
+    if (!capabilities.leaderboard || capabilities.mock) return null;
+    try {
+        return await withTimeout(RundotGameAPI.leaderboard.getPagedScores(options), 6000, "leaderboard.getPagedScores");
+    } catch (error) {
+        console.warn("[runSdk] leaderboard unavailable", error);
+        return null;
+    }
+}
+
+export async function fetchMyLeaderboardRank(options: PlayerRankOptions): Promise<PlayerRankResult | null> {
+    if (!capabilities.leaderboard || capabilities.mock) return null;
+    try {
+        return await withTimeout(RundotGameAPI.leaderboard.getMyRank(options), 6000, "leaderboard.getMyRank");
+    } catch (error) {
+        console.warn("[runSdk] player rank unavailable", error);
+        return null;
     }
 }
 

@@ -130,9 +130,13 @@ function snapshot() {
 }
 
 function clickUi(selector) {
+    // Both the query AND the error message must be encoded: a selector
+    // containing a quote (e.g. [data-period="daily"]) would otherwise close
+    // the string literal and make the injected snippet a syntax error.
+    const encoded = JSON.stringify(selector);
     return evaluate(`(() => {
-        const node = document.querySelector(${JSON.stringify(selector)});
-        if (!node) throw new Error("missing ${selector}");
+        const node = document.querySelector(${encoded});
+        if (!node) throw new Error("missing " + ${encoded});
         node.click();
         return true;
     })()`);
@@ -315,6 +319,30 @@ try {
     await waitFor('window.__neonleapQa.snapshot().screen === "daily"', "supply drop");
     await capture(shot("daily-phone"));
     await clickUi("#screen-daily [data-back]");
+
+    await clickUi("[data-open-leaderboard]");
+    await waitFor('window.__neonleapQa.snapshot().screen === "leaderboard"', "leaderboard");
+    await delay(900); // let the (fail-closed) load settle
+    await capture(shot("leaderboard-phone"));
+    const rankNote = await evaluate('document.querySelector("[data-leaderboard-note]").textContent');
+    if (!rankNote || rankNote === "LOADING…") throw new Error(`leaderboard never resolved: ${rankNote}`);
+    await clickUi('[data-period="daily"]');
+    await delay(700);
+    // Paint a populated board so the row layout, the "you" highlight, and
+    // username escaping are all actually reviewed — the live board fails
+    // closed in local dev, so it can never exercise this path on its own.
+    await evaluate(`window.__neonleapQa.previewLeaderboard([
+        { rank: 1, name: "VOLTRUNNER", distance: 8420 },
+        { rank: 2, name: "kite<script>", distance: 7115 },
+        { rank: 3, name: "NIGHTCOURIER", distance: 6890 },
+        { rank: 4, name: "you", distance: 5240 },
+        { rank: 5, name: "ROOFTOP_GHOST", distance: 4980 }
+    ], 4)`);
+    await delay(300);
+    await capture(shot("leaderboard-populated"));
+    const injected = await evaluate('document.querySelector("[data-leaderboard-rows]").innerHTML.includes("<script>")');
+    if (injected) throw new Error("leaderboard renders usernames as markup — XSS via another player's name");
+    await clickUi("#screen-leaderboard [data-back]");
 
     await clickUi("[data-open-settings]");
     await waitFor('window.__neonleapQa.snapshot().screen === "settings"', "settings");

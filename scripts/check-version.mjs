@@ -171,6 +171,30 @@ assert.match(main, /analytics\.sessionEnd\(/, "sessions must be bounded: end");
 assert.match(main, /analytics\.installErrorCapture\(\)/, "runtime errors must reach analytics");
 assert.match(main, /analytics\.markTransportReady\(\)/, "pre-transport events must be buffered, never dropped");
 
+/* ------------------------------------------------------- 6c. leaderboard */
+
+const leaderboard = read("../src/systems/leaderboard.ts");
+assert.match(leaderboard, /MIN_DURATION_SECONDS = 10/, "must honour the board's minimum run duration");
+assert.match(leaderboard, /RATE_LIMIT_SECONDS = 60/, "must honour the board's submission rate limit");
+assert.match(
+    leaderboard,
+    /run\.distance < saveSystem\.get\(\)\.records\.bestDistance/,
+    "only a personal best may be submitted to a keep-best board",
+);
+assert.match(leaderboard, /capabilities\.leaderboard && !capabilities\.mock/, "the board must fail closed");
+// Another player's username is untrusted input rendered in our UI.
+assert.match(
+    controller,
+    /el\(node, "\.rank-name"\)\.textContent = row\.name;/,
+    "leaderboard usernames must be set as text, never interpolated as markup",
+);
+assert.doesNotMatch(
+    controller,
+    /rank-name">\$\{row\.name\}/,
+    "leaderboard usernames must never be interpolated into innerHTML",
+);
+assert.match(main, /void submitRun\(/, "the run must be submitted without blocking results");
+
 /* --------------------------------------------------------- 7. audio + copy */
 
 assert.match(audioManager, /import MUSIC_URL from "\.\/assets\/rooftop-run\.mp3"/, "the owner's score is the music");

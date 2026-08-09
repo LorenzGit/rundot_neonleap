@@ -60,6 +60,22 @@ class AudioManager {
         this.applyGains();
     }
 
+    /**
+     * Starts fetching/decoding the score during boot. Creating this element
+     * inside the first-gesture path made a multi-megabyte decode land on the
+     * exact frame the player pressed RUN; buffering it behind the menu costs
+     * nothing and removes that hitch.
+     */
+    preloadMusic(): void {
+        if (this.musicElement) return;
+        const element = new Audio(MUSIC_URL);
+        element.loop = true;
+        element.preload = "auto";
+        element.crossOrigin = "anonymous";
+        this.musicElement = element;
+        element.load();
+    }
+
     bindUnlock(): void {
         if (this.unlockBound) return;
         this.unlockBound = true;
@@ -103,12 +119,11 @@ class AudioManager {
         this.noiseBuffer = buffer;
 
         // The looping score, routed through the music chain so the FOCUS
-        // filter and the volume setting both apply to it.
-        const element = new Audio(MUSIC_URL);
-        element.loop = true;
-        element.preload = "auto";
-        this.musicElement = element;
-        context.createMediaElementSource(element).connect(this.musicGain);
+        // filter and the volume setting both apply to it. The element itself
+        // was created (and has been buffering) since boot.
+        this.preloadMusic();
+        const element = this.musicElement;
+        if (element) context.createMediaElementSource(element).connect(this.musicGain);
     }
 
     private applyGains(): void {

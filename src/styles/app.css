@@ -813,6 +813,74 @@ button {
     color: var(--text-dim);
 }
 
+/* -------------------------------------------------------------- leaderboard */
+
+.period-tabs {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+}
+
+.period-tab {
+    padding: 8px 18px;
+    font-size: 12px;
+    opacity: 0.55;
+}
+
+.period-tab.active {
+    opacity: 1;
+    border-color: var(--cyan);
+    box-shadow:
+        inset 0 1px 0 rgba(159, 216, 255, 0.14),
+        0 0 18px -6px var(--cyan);
+}
+
+.rank-row {
+    display: grid;
+    grid-template-columns: 46px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 12px;
+    margin-bottom: 6px;
+    background: var(--panel-soft);
+    border: 1px solid var(--line-soft);
+    border-radius: 10px;
+    text-align: left;
+}
+
+.rank-row.you {
+    border-color: var(--cyan);
+    background: rgba(61, 245, 255, 0.09);
+    box-shadow: 0 0 20px -8px var(--cyan);
+}
+
+.rank-place {
+    font-size: clamp(14px, 2.6vh, 19px);
+    font-weight: 800;
+    color: var(--text-dim);
+    text-align: center;
+}
+
+.rank-row.you .rank-place {
+    color: var(--cyan);
+    text-shadow: 0 0 10px rgba(61, 245, 255, 0.8);
+}
+
+.rank-name {
+    font-size: clamp(12px, 2.2vh, 15px);
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rank-distance {
+    font-size: clamp(12px, 2.2vh, 16px);
+    font-weight: 800;
+    color: var(--cyan);
+}
+
 /* ----------------------------------------------------------------- settings */
 
 .setting-row {

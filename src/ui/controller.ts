@@ -7,6 +7,7 @@ import { POWERUP_LABELS } from "../game/scene.ts";
 import type { RunnerSnapshot, UpgradeId } from "../game/core.ts";
 import type { CommerceProductId, ProductCommerceView } from "../systems/commerce.ts";
 import type { DailyRewardsView } from "../systems/dailyRewards.ts";
+import type { LeaderboardPeriod, LeaderboardView } from "../systems/leaderboard.ts";
 import type { MissionView } from "../systems/missions.ts";
 import type { SecondWindView } from "../systems/rewardedAds.ts";
 import type { GameRecords, GameSettings } from "../systems/save.ts";
@@ -65,9 +66,10 @@ export interface UiHooks {
     onMonetizationSurfaceViewed(surfaceId: string): void;
     onAdOfferViewed(status: string): void;
     onUiSound(kind: "tap" | "confirm"): void;
+    onLoadLeaderboard(period: LeaderboardPeriod): Promise<LeaderboardView>;
 }
 
-type ScreenName = "menu" | "hud" | "pause" | "results" | "upgrades" | "missions" | "daily" | "settings";
+type ScreenName = "menu" | "hud" | "pause" | "results" | "upgrades" | "missions" | "daily" | "leaderboard" | "settings";
 
 const UPGRADE_COPY: Readonly<Record<UpgradeId, { name: string; description: string }>> = {
     capacitor: { name: "CAPACITOR", description: "Powerup duration +12% per level" },
@@ -97,6 +99,8 @@ export class UiController {
     private milestoneTimer = 0;
     private lastFlowTier = 1;
     private secondWindBusy = false;
+    private leaderboardPeriod: LeaderboardPeriod = "alltime";
+    private leaderboardToken = 0;
 
     constructor(settings: GameSettings, hooks: UiHooks, providers: UiProviders) {
         this.settings = { ...settings };
@@ -123,6 +127,7 @@ export class UiController {
                     <span class="badge-host"><button class="btn" data-open-upgrades>UPGRADE BAY</button></span>
                     <span class="badge-host"><button class="btn" data-open-missions>MISSIONS<span class="badge" data-mission-badge hidden></span></button></span>
                     <span class="badge-host"><button class="btn" data-open-daily>SUPPLY DROP<span class="badge" data-daily-badge hidden>!</span></button></span>
+                    <button class="btn" data-open-leaderboard>RANKS</button>
                     <button class="btn btn-ghost" data-open-settings>SETTINGS</button>
                 </div>
                 <div class="menu-version">NEONLEAP v${__APP_VERSION__}</div>
@@ -219,6 +224,20 @@ export class UiController {
                 </div>
             </section>
 
+            <section id="screen-leaderboard" class="screen sheet sheet-wide">
+                <div class="panel">
+                    <div class="panel-title">RANKS</div>
+                    <div class="period-tabs">
+                        <button class="btn period-tab" data-period="alltime">ALL TIME</button>
+                        <button class="btn period-tab" data-period="daily">TODAY</button>
+                    </div>
+                    <div class="daily-note" data-leaderboard-note></div>
+                    <div class="hairline"></div>
+                    <div data-leaderboard-rows></div>
+                    <div class="sheet-actions"><button class="btn" data-back>BACK</button></div>
+                </div>
+            </section>
+
             <section id="screen-settings" class="screen sheet">
                 <div class="panel">
                     <div class="panel-title">SETTINGS</div>
@@ -259,7 +278,17 @@ export class UiController {
         el(this.root, "[data-open-upgrades]").addEventListener("click", () => this.openUpgrades());
         el(this.root, "[data-open-missions]").addEventListener("click", () => this.openMissions());
         el(this.root, "[data-open-daily]").addEventListener("click", () => this.openDaily());
+        el(this.root, "[data-open-leaderboard]").addEventListener("click", () => this.openLeaderboard());
         el(this.root, "[data-open-settings]").addEventListener("click", () => this.openSettings("menu"));
+        for (const tab of this.root.querySelectorAll<HTMLButtonElement>(".period-tab")) {
+            tab.addEventListener("click", () => {
+                const period = tab.dataset.period === "daily" ? "daily" : "alltime";
+                if (period === this.leaderboardPeriod) return;
+                this.leaderboardPeriod = period;
+                this.hooks.onUiSound("tap");
+                void this.refreshLeaderboard();
+            });
+        }
         el(this.root, "[data-replay-tutorial]").addEventListener("click", () => {
             this.hooks.onReplayTutorial();
             this.toast("TUTORIAL RE-ARMED FOR THE NEXT RUN");
@@ -393,6 +422,59 @@ export class UiController {
         this.hooks.onUiSound("tap");
         this.renderDaily();
         this.show("daily");
+    }
+
+    /** Shows the board screen without triggering a load (development QA). */
+    showLeaderboardScreen(): void {
+        this.show("leaderboard");
+    }
+
+    private openLeaderboard(): void {
+        this.returnTo = "menu";
+        this.hooks.onUiSound("tap");
+        this.show("leaderboard");
+        void this.refreshLeaderboard();
+    }
+
+    /**
+     * Loads the selected board. Every load carries a token so a slow response
+     * for a period the player already switched away from is discarded rather
+     * than painted over the newer one.
+     */
+    private async refreshLeaderboard(): Promise<void> {
+        const requestId = this.leaderboardToken + 1;
+        this.leaderboardToken = requestId;
+        for (const tab of this.root.querySelectorAll<HTMLButtonElement>(".period-tab")) {
+            tab.classList.toggle("active", tab.dataset.period === this.leaderboardPeriod);
+        }
+        el(this.root, "[data-leaderboard-note]").textContent = "LOADING…";
+        el(this.root, "[data-leaderboard-rows]").innerHTML = "";
+        const view = await this.hooks.onLoadLeaderboard(this.leaderboardPeriod);
+        if (requestId !== this.leaderboardToken) return;
+        this.renderLeaderboard(view);
+    }
+
+    /** Public so development QA can screenshot a populated board. */
+    renderLeaderboard(view: LeaderboardView): void {
+        el(this.root, "[data-leaderboard-note]").textContent = view.message
+            ? view.message
+            : view.myRank !== null
+              ? `YOUR RANK ${view.myRank} OF ${view.totalPlayers.toLocaleString("en-US")}`
+              : `${view.totalPlayers.toLocaleString("en-US")} RUNNERS RANKED`;
+        const rows = el(this.root, "[data-leaderboard-rows]");
+        rows.innerHTML = "";
+        for (const row of view.rows) {
+            const node = document.createElement("div");
+            node.className = `rank-row${row.isYou ? " you" : ""}`;
+            node.innerHTML = `
+                <span class="rank-place">${row.rank ?? "—"}</span>
+                <span class="rank-name"></span>
+                <span class="rank-distance">${row.distance.toLocaleString("en-US")} M</span>
+            `;
+            // Usernames come from other players: never inject them as markup.
+            el(node, ".rank-name").textContent = row.name;
+            rows.appendChild(node);
+        }
     }
 
     private openSettings(from: "menu" | "pause"): void {
