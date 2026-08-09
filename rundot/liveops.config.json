@@ -1,0 +1,43 @@
+{
+  "client": {
+    "values": {
+      "monetization": {
+        "enabled": true,
+        "privateTestMode": false,
+        "purchasesEnabled": true,
+        "rewardedAdsEnabled": true,
+        "interstitialAdsEnabled": true,
+        "placements": {
+          "second_wind": {
+            "enabled": true,
+            "cooldownSeconds": 0,
+            "sessionCap": 6,
+            "dailyCap": 6,
+            "rewardMultiplier": 1
+          },
+          "run_end_break": {
+            "enabled": true,
+            "cooldownSeconds": 300,
+            "sessionCap": 2,
+            "dailyCap": 6,
+            "everyNthRun": 3
+          }
+        },
+        "products": {
+          "neon_core": {
+            "enabled": true
+          },
+          "cell_cache": {
+            "enabled": true
+          }
+        }
+      }
+    },
+    "overrides": [],
+    "experiments": []
+  },
+  "server": {
+    "values": {},
+    "overrides": []
+  }
+}

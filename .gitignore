@@ -1,0 +1,55 @@
+# Dependencies, caches, and build output
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.tsbuildinfo
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+*.local
+game.config.playground.json
+*.pem
+*.key
+*.p12
+
+# RUN local/operator state
+.rundot/
+rundot-session*
+player-snapshot*
+campaign-state*
+
+# Generated test and QA output
+coverage/
+playwright-report/
+test-results/
+# Root-level scratch dumps only. docs/screenshots/ is committed on purpose:
+# the README embeds it, and a bare "screenshots/" rule swallows it too.
+/screenshots/
+docs/qa/
+# Intermediate raw frame from the thumbnail generator; the JPG is the artifact.
+public/thumbnail-source.ppm
+tmp/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Internal release/operator notes
+AGENTS.md
+docs/private-monetization-test.md
+docs/release-evidence.md
+
+# Editors and operating systems
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+*~

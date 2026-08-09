@@ -1,0 +1,68 @@
+{
+  "items": [
+    {
+      "itemId": "neonleap_neon_core",
+      "name": "NEON CORE",
+      "description": "Removes interstitials forever, grants a permanent +25% cell bonus, and the ion-white runner trail.",
+      "category": "non_consumable",
+      "price": {
+        "type": "bucks",
+        "value": "249"
+      },
+      "entitlements": [
+        {
+          "entitlementId": "neonleap_neon_core",
+          "quantity": 1,
+          "consumable": false
+        }
+      ],
+      "assets": {},
+      "unique": true,
+      "active": true,
+      "regions": [],
+      "refundEligible": true,
+      "refundWindowHours": 24,
+      "tags": [
+        "neonleap",
+        "ad-free",
+        "permanent"
+      ],
+      "sortOrder": 1,
+      "releasedAt": null,
+      "expiresAt": null
+    },
+    {
+      "itemId": "neonleap_cell_cache",
+      "name": "CELL CACHE",
+      "description": "500 cells, granted instantly. Every upgrade stays earnable in play.",
+      "category": "consumable",
+      "price": {
+        "type": "bucks",
+        "value": "120"
+      },
+      "entitlements": [
+        {
+          "entitlementId": "neonleap_cell_cache",
+          "quantity": 1,
+          "consumable": true
+        }
+      ],
+      "assets": {},
+      "unique": false,
+      "active": true,
+      "regions": [],
+      "refundEligible": true,
+      "refundWindowHours": 24,
+      "tags": [
+        "neonleap",
+        "cells",
+        "consumable"
+      ],
+      "sortOrder": 2,
+      "releasedAt": null,
+      "expiresAt": null
+    }
+  ],
+  "sales": [],
+  "collections": []
+}
