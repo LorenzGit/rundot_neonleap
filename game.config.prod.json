@@ -1,8 +1,15 @@
 {
-  "gameId": "REPLACE_WITH_RUN_GAME_ID",
+  "gameId": "2I2EzJ3iXnmycjFOEBKa",
   "relativePathToDistFolder": "dist",
   "usesPreloader": false,
   "orientation": "landscape",
-  "keywords": ["runner", "arcade", "neon", "endless", "parkour", "one-touch"],
+  "keywords": [
+    "runner",
+    "arcade",
+    "neon",
+    "endless",
+    "parkour",
+    "one-touch"
+  ],
   "kitId": null
 }

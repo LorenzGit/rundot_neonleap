@@ -120,6 +120,10 @@ assert.match(controller, /NEW BEST/, "the results screen must stamp a new best")
 assert.match(main, /maybeShowResultsInterstitial/, "interstitials only ever run through the results gate");
 assert.match(scene, /blendMode = "add"/, "neon needs additive light (sprites, never Graphics)");
 assert.match(pixiApp, /preference/, "the renderer must stay WebGPU-first with WebGL fallback");
+// constructor.name is mangled by minification, so a prod build would report the
+// wrong backend forever. renderer.name is Pixi's own literal string.
+assert.doesNotMatch(pixiApp, /\.constructor\.name/, "backend detection must not depend on constructor.name");
+assert.match(pixiApp, /app\.renderer\.name/, "backend detection must read Pixi's renderer.name");
 
 /* ------------------------------------------------- 6b. instrumentation */
 
