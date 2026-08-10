@@ -200,6 +200,13 @@ button {
     margin: 10px 0;
 }
 
+/* Inside the sheet wrappers the flex gap already provides the breathing room;
+   the margin on top of it read as a hole. */
+.panel-head > .hairline,
+.panel-body > .hairline {
+    margin: 0;
+}
+
 /* --------------------------------------------------------------------- menu */
 
 #screen-menu {
@@ -263,12 +270,26 @@ button {
     left: 50%;
     bottom: calc(var(--safe-bottom) + 12px);
     transform: translateX(-50%);
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
+    /* One row of equal columns. Wrapping intrinsically-sized buttons gave
+       ragged widths and orphaned the last one onto a line of its own; the game
+       is landscape-locked, so five across always has the room. */
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     gap: 10px;
-    width: max-content;
-    max-width: min(92vw, 760px);
+    width: min(92vw, 760px);
+}
+
+.menu-row .btn {
+    width: 100%;
+    padding-inline: 10px;
+    font-size: clamp(11px, 1.15vw, 15px);
+    letter-spacing: 0.12em;
+    white-space: nowrap;
+}
+
+.menu-row .badge-host {
+    display: block;
 }
 
 .badge-host {
@@ -277,11 +298,15 @@ button {
     z-index: 1;
 }
 
+/* The badge is a SIBLING of the button, not a child: .btn has a clip-path, and
+   a clip-path clips descendants, so a badge inside the button lost the corner
+   that overhangs it. It is decorative, so it must not eat the button's taps. */
 .badge {
     position: absolute;
     top: -7px;
     right: -7px;
     z-index: 2;
+    pointer-events: none;
     min-width: 20px;
     height: 20px;
     padding: 0 5px;
@@ -520,6 +545,10 @@ button {
     -webkit-backdrop-filter: blur(6px);
 }
 
+/* A sheet is a fixed head, a scrolling body, and a fixed foot. The panel ITSELF
+   must never scroll: when it did, the title scrolled away and the actions —
+   BACK, RUN AGAIN, CLAIM — sat below the fold on short screens, so the way out
+   of a sheet was hidden behind a scroll the player had no reason to expect. */
 .sheet .panel {
     display: flex;
     flex-direction: column;
@@ -527,13 +556,70 @@ button {
     padding: clamp(16px, 3.4vh, 28px) clamp(18px, 4vw, 34px);
     width: min(94vw, 560px);
     max-height: calc(100dvh - var(--safe-top) - var(--safe-bottom) - 24px);
-    overflow-y: auto;
+    overflow: hidden;
     align-items: stretch;
     text-align: center;
 }
 
 .sheet-wide .panel {
     width: min(96vw, 760px);
+}
+
+.panel-head,
+.panel-foot {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 0 0 auto;
+}
+
+.panel-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    /* min-height:0 is what actually lets this shrink inside the flex column;
+       without it the body claims its content height and pushes the foot out. */
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.panel-body::-webkit-scrollbar {
+    display: none;
+}
+
+/* Cut-off content fades instead of ending on a hard edge mid-row, so there is
+   a visible reason to scroll. The mask is driven by data-overflow, set from the
+   scroll position, so a body with nothing hidden gets no fade at all. */
+.panel-body[data-overflow="top"] {
+    mask-image: linear-gradient(180deg, transparent 0, #000 28px);
+}
+
+.panel-body[data-overflow="bottom"] {
+    mask-image: linear-gradient(0deg, transparent 0, #000 28px);
+}
+
+.panel-body[data-overflow="both"] {
+    mask-image: linear-gradient(180deg, transparent 0, #000 28px, #000 calc(100% - 28px), transparent 100%);
+}
+
+/* Row containers space themselves rather than relying on each row's margin. */
+.row-list {
+    display: grid;
+    gap: 8px;
+}
+
+.row-list-two-up {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 620px) {
+    .row-list-two-up {
+        grid-template-columns: minmax(0, 1fr);
+    }
 }
 
 .sheet-actions {

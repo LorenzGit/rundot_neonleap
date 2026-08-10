@@ -8,14 +8,14 @@
         "rewardedAdsEnabled": true,
         "interstitialAdsEnabled": true,
         "placements": {
-          "second_wind": {
+          "rewarded_second_wind": {
             "enabled": true,
             "cooldownSeconds": 0,
             "sessionCap": 6,
             "dailyCap": 6,
             "rewardMultiplier": 1
           },
-          "run_end_break": {
+          "interstitial_results_break": {
             "enabled": true,
             "cooldownSeconds": 300,
             "sessionCap": 2,

@@ -87,6 +87,9 @@ function el<T extends HTMLElement = HTMLElement>(root: ParentNode, selector: str
 
 export class UiController {
     private readonly root: HTMLElement;
+    /** Every scrolling sheet body, for the edge-fade bookkeeping. */
+    private scrollBodies: HTMLElement[] = [];
+    private scrollFadeFrame = 0;
     private readonly hooks: UiHooks;
     private readonly providers: UiProviders;
     private settings: GameSettings;
@@ -110,6 +113,7 @@ export class UiController {
         if (!root) throw new Error("Missing #ui-root");
         this.root = root;
         this.build();
+        this.bindScrollFades();
         this.bindInput();
         this.showMenu();
     }
@@ -125,8 +129,8 @@ export class UiController {
                 <button class="btn btn-primary" data-play>RUN</button>
                 <div class="menu-row">
                     <span class="badge-host"><button class="btn" data-open-upgrades>UPGRADE BAY</button></span>
-                    <span class="badge-host"><button class="btn" data-open-missions>MISSIONS<span class="badge" data-mission-badge hidden></span></button></span>
-                    <span class="badge-host"><button class="btn" data-open-daily>SUPPLY DROP<span class="badge" data-daily-badge hidden>!</span></button></span>
+                    <span class="badge-host"><button class="btn" data-open-missions>MISSIONS</button><span class="badge" data-mission-badge hidden></span></span>
+                    <span class="badge-host"><button class="btn" data-open-daily>SUPPLY DROP</button><span class="badge" data-daily-badge hidden>!</span></span>
                     <button class="btn" data-open-leaderboard>RANKS</button>
                     <button class="btn btn-ghost" data-open-settings>SETTINGS</button>
                 </div>
@@ -154,98 +158,138 @@ export class UiController {
 
             <section id="screen-pause" class="screen sheet">
                 <div class="panel">
-                    <div class="panel-title">PAUSED</div>
-                    <div class="hairline"></div>
-                    <div class="sheet-actions">
-                        <button class="btn btn-primary" data-resume>RESUME</button>
+                    <div class="panel-head">
+                        <div class="panel-title">PAUSED</div>
+                        <div class="hairline"></div>
                     </div>
-                    <div class="sheet-actions">
-                        <button class="btn btn-ghost" data-end-run>END RUN</button>
-                        <button class="btn btn-ghost" data-pause-settings>SETTINGS</button>
+                    <div class="panel-foot">
+                        <div class="sheet-actions">
+                            <button class="btn btn-primary" data-resume>RESUME</button>
+                        </div>
+                        <div class="sheet-actions">
+                            <button class="btn btn-ghost" data-end-run>END RUN</button>
+                            <button class="btn btn-ghost" data-pause-settings>SETTINGS</button>
+                        </div>
                     </div>
                 </div>
             </section>
 
             <section id="screen-results" class="screen sheet sheet-wide">
                 <div class="panel">
-                    <div class="stamp-best" data-new-best hidden>NEW BEST</div>
-                    <div class="results-distance"><span data-results-distance>0</span><small> M</small></div>
-                    <div class="death-cause" data-death-cause></div>
-                    <div class="results-grid">
-                        <div class="stat"><b data-results-score>0</b><span>SCORE</span></div>
-                        <div class="stat cells"><b data-results-cells>+0</b><span>CELLS</span></div>
-                        <div class="stat"><b data-results-nearmiss>0</b><span>NEAR-MISS</span></div>
-                        <div class="stat"><b data-results-flow>×1</b><span>TOP FLOW</span></div>
+                    <div class="panel-head">
+                        <div class="stamp-best" data-new-best hidden>NEW BEST</div>
+                        <div class="results-distance"><span data-results-distance>0</span><small> M</small></div>
+                        <div class="death-cause" data-death-cause></div>
                     </div>
-                    <div class="second-wind" data-second-wind>
-                        <button class="btn btn-magenta" data-second-wind-action>WATCH · SECOND WIND</button>
-                        <div class="status" data-second-wind-status></div>
+                    <div class="panel-body">
+                        <div class="results-grid">
+                            <div class="stat"><b data-results-score>0</b><span>SCORE</span></div>
+                            <div class="stat cells"><b data-results-cells>+0</b><span>CELLS</span></div>
+                            <div class="stat"><b data-results-nearmiss>0</b><span>NEAR-MISS</span></div>
+                            <div class="stat"><b data-results-flow>×1</b><span>TOP FLOW</span></div>
+                        </div>
+                        <div class="second-wind" data-second-wind>
+                            <button class="btn btn-magenta" data-second-wind-action>WATCH · SECOND WIND</button>
+                            <div class="status" data-second-wind-status></div>
+                        </div>
+                        <div data-results-missions></div>
                     </div>
-                    <div class="sheet-actions">
-                        <button class="btn btn-primary" data-retry>RUN AGAIN</button>
-                        <button class="btn btn-ghost" data-to-menu>MENU</button>
+                    <div class="panel-foot">
+                        <div class="sheet-actions">
+                            <button class="btn btn-primary" data-retry>RUN AGAIN</button>
+                            <button class="btn btn-ghost" data-to-menu>MENU</button>
+                        </div>
                     </div>
-                    <div data-results-missions></div>
                 </div>
             </section>
 
             <section id="screen-upgrades" class="screen sheet sheet-wide">
                 <div class="panel">
-                    <div class="panel-title">UPGRADE BAY</div>
-                    <div class="wallet-line"><b data-wallet>0</b> CELLS BANKED</div>
-                    <div class="hairline"></div>
-                    <div data-upgrade-rows></div>
-                    <div class="hairline"></div>
-                    <div class="shop-row" data-shop-row></div>
-                    <div class="sheet-actions"><button class="btn" data-back>BACK</button></div>
+                    <div class="panel-head">
+                        <div class="panel-title">UPGRADE BAY</div>
+                        <div class="wallet-line"><b data-wallet>0</b> CELLS BANKED</div>
+                        <div class="hairline"></div>
+                    </div>
+                    <div class="panel-body">
+                        <div class="row-list" data-upgrade-rows></div>
+                        <div class="hairline"></div>
+                        <div class="shop-row" data-shop-row></div>
+                    </div>
+                    <div class="panel-foot">
+                        <div class="sheet-actions"><button class="btn" data-back>BACK</button></div>
+                    </div>
                 </div>
             </section>
 
             <section id="screen-missions" class="screen sheet sheet-wide">
                 <div class="panel">
-                    <div class="panel-title">TONIGHT'S MISSIONS</div>
-                    <div class="daily-note" data-missions-note></div>
-                    <div class="hairline"></div>
-                    <div data-mission-rows></div>
-                    <div class="sheet-actions"><button class="btn" data-back>BACK</button></div>
+                    <div class="panel-head">
+                        <div class="panel-title">TONIGHT'S MISSIONS</div>
+                        <div class="daily-note" data-missions-note></div>
+                        <div class="hairline"></div>
+                    </div>
+                    <div class="panel-body">
+                        <div class="row-list" data-mission-rows></div>
+                    </div>
+                    <div class="panel-foot">
+                        <div class="sheet-actions"><button class="btn" data-back>BACK</button></div>
+                    </div>
                 </div>
             </section>
 
             <section id="screen-daily" class="screen sheet">
                 <div class="panel">
-                    <div class="panel-title">NIGHTLY SUPPLY DROP</div>
-                    <div class="daily-note" data-daily-note></div>
-                    <div class="hairline"></div>
-                    <div class="daily-track" data-daily-track></div>
-                    <div class="sheet-actions">
-                        <button class="btn btn-primary" data-daily-claim>CLAIM</button>
-                        <button class="btn btn-ghost" data-back>BACK</button>
+                    <div class="panel-head">
+                        <div class="panel-title">NIGHTLY SUPPLY DROP</div>
+                        <div class="daily-note" data-daily-note></div>
+                        <div class="hairline"></div>
+                    </div>
+                    <div class="panel-body">
+                        <div class="daily-track" data-daily-track></div>
+                    </div>
+                    <div class="panel-foot">
+                        <div class="sheet-actions">
+                            <button class="btn btn-primary" data-daily-claim>CLAIM</button>
+                            <button class="btn btn-ghost" data-back>BACK</button>
+                        </div>
                     </div>
                 </div>
             </section>
 
             <section id="screen-leaderboard" class="screen sheet sheet-wide">
                 <div class="panel">
-                    <div class="panel-title">RANKS</div>
-                    <div class="period-tabs">
-                        <button class="btn period-tab" data-period="alltime">ALL TIME</button>
-                        <button class="btn period-tab" data-period="daily">TODAY</button>
+                    <div class="panel-head">
+                        <div class="panel-title">RANKS</div>
+                        <div class="period-tabs">
+                            <button class="btn period-tab" data-period="alltime">ALL TIME</button>
+                            <button class="btn period-tab" data-period="daily">TODAY</button>
+                        </div>
+                        <div class="daily-note" data-leaderboard-note></div>
+                        <div class="hairline"></div>
                     </div>
-                    <div class="daily-note" data-leaderboard-note></div>
-                    <div class="hairline"></div>
-                    <div data-leaderboard-rows></div>
-                    <div class="sheet-actions"><button class="btn" data-back>BACK</button></div>
+                    <div class="panel-body">
+                        <div data-leaderboard-rows></div>
+                    </div>
+                    <div class="panel-foot">
+                        <div class="sheet-actions"><button class="btn" data-back>BACK</button></div>
+                    </div>
                 </div>
             </section>
 
-            <section id="screen-settings" class="screen sheet">
+            <section id="screen-settings" class="screen sheet sheet-wide">
                 <div class="panel">
-                    <div class="panel-title">SETTINGS</div>
-                    <div class="hairline"></div>
-                    <div data-setting-rows></div>
-                    <div class="sheet-actions">
-                        <button class="btn btn-ghost" data-replay-tutorial>REPLAY TUTORIAL</button>
-                        <button class="btn" data-back>BACK</button>
+                    <div class="panel-head">
+                        <div class="panel-title">SETTINGS</div>
+                        <div class="hairline"></div>
+                    </div>
+                    <div class="panel-body">
+                        <div class="row-list row-list-two-up" data-setting-rows></div>
+                    </div>
+                    <div class="panel-foot">
+                        <div class="sheet-actions">
+                            <button class="btn btn-ghost" data-replay-tutorial>REPLAY TUTORIAL</button>
+                            <button class="btn" data-back>BACK</button>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -311,6 +355,50 @@ export class UiController {
 
     /* ---------------------------------------------------------------- input */
 
+    /**
+     * Marks each scrolling panel body with which edges still have content past
+     * them, so the CSS can fade exactly those edges. Re-measured on scroll, on
+     * resize, and whenever a sheet's rows are re-rendered — a fade that lies
+     * about there being more below is worse than no fade at all.
+     */
+    private bindScrollFades(): void {
+        for (const body of this.root.querySelectorAll<HTMLElement>(".panel-body")) {
+            this.scrollBodies.push(body);
+            body.addEventListener("scroll", () => this.updateScrollFade(body), { passive: true });
+            // Sheets re-render their rows on claim, purchase and leaderboard
+            // load, which changes the scroll height. Watching the subtree keeps
+            // this correct without every render method having to remember.
+            new MutationObserver(() => this.queueScrollFadeRefresh()).observe(body, {
+                childList: true,
+                subtree: true,
+            });
+        }
+        window.addEventListener("resize", () => this.queueScrollFadeRefresh());
+        this.refreshScrollFades();
+    }
+
+    private queueScrollFadeRefresh(): void {
+        if (this.scrollFadeFrame) return;
+        this.scrollFadeFrame = requestAnimationFrame(() => {
+            this.scrollFadeFrame = 0;
+            this.refreshScrollFades();
+        });
+    }
+
+    private updateScrollFade(body: HTMLElement): void {
+        // 1px of slack absorbs sub-pixel layout rounding, which would otherwise
+        // leave a permanent bottom fade on a body that is already fully shown.
+        const hiddenAbove = body.scrollTop > 1;
+        const hiddenBelow = body.scrollTop + body.clientHeight < body.scrollHeight - 1;
+        const overflow = hiddenAbove && hiddenBelow ? "both" : hiddenAbove ? "top" : hiddenBelow ? "bottom" : "none";
+        body.dataset.overflow = overflow;
+    }
+
+    /** Called after any sheet re-renders its rows, since that changes height. */
+    private refreshScrollFades(): void {
+        for (const body of this.scrollBodies) this.updateScrollFade(body);
+    }
+
     private bindInput(): void {
         const isJumpSurface = (target: EventTarget | null): boolean => {
             if (this.screen !== "hud" || this.adVisible) return false;
@@ -359,6 +447,9 @@ export class UiController {
             section.classList.toggle("visible", section.id === `screen-${name}`);
         }
         if (name !== "hud") this.setHeld(false);
+        // A hidden screen is display:none, so its bodies measure as zero-height.
+        // The fades can only be worked out once the screen is actually up.
+        this.refreshScrollFades();
     }
 
     showMenu(): void {
