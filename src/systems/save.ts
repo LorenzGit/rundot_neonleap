@@ -289,6 +289,49 @@ export const saveSystem = {
         return { ok: true, reason: "ready", previous, granted };
     },
 
+    /**
+     * Undo a granted-but-unsaved daily reward by DELTA against the current
+     * state, not by restoring the pre-claim snapshot: anything else the player
+     * earned between the grant and the failed flush must survive the rollback.
+     */
+    revertDailyReward(input: { day: string; granted: number; previousLastClaimDay: string | null }): void {
+        const claimId = `daily-reward:${input.day}`;
+        if (!state.daily.claimIds.includes(claimId)) return;
+        const granted = nonNegativeInteger(input.granted);
+        state = {
+            ...state,
+            wallet: { cells: Math.max(0, state.wallet.cells - granted) },
+            records: { ...state.records, totalCells: Math.max(0, state.records.totalCells - granted) },
+            daily: {
+                lastClaimDay: input.previousLastClaimDay,
+                totalClaims: Math.max(0, state.daily.totalClaims - 1),
+                claimIds: state.daily.claimIds.filter((id) => id !== claimId),
+            },
+        };
+    },
+
+    /**
+     * Undo a claimed-but-unsaved mission reward by DELTA: subtract the granted
+     * cells and re-open the slot, leaving every unrelated mutation that landed
+     * during the failed flush intact.
+     */
+    revertMissionClaim(input: { missionId: string; granted: number }): void {
+        const slot = state.missions.slots.find((entry) => entry.id === input.missionId);
+        if (!slot || !slot.claimed) return;
+        const granted = nonNegativeInteger(input.granted);
+        state = {
+            ...state,
+            wallet: { cells: Math.max(0, state.wallet.cells - granted) },
+            records: { ...state.records, totalCells: Math.max(0, state.records.totalCells - granted) },
+            missions: {
+                dateKey: state.missions.dateKey,
+                slots: state.missions.slots.map((entry) =>
+                    entry.id === input.missionId ? { ...entry, claimed: false } : entry,
+                ),
+            },
+        };
+    },
+
     restore(snapshot: GameSaveV1): void {
         state = structuredClone(snapshot);
     },

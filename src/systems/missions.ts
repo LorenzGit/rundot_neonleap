@@ -89,14 +89,15 @@ export async function claimMission(missionId: string): Promise<{ ok: boolean; me
     if (!slot) return { ok: false, message: "MISSION NOT ON TONIGHT'S BOARD", granted: 0 };
     if (slot.claimed) return { ok: false, message: "ALREADY CLAIMED", granted: 0 };
     if (slot.progress < slot.target) return { ok: false, message: "NOT COMPLETE YET", granted: 0 };
-    const previous = structuredClone(saveSystem.get());
     const granted = saveSystem.grantCells(slot.reward);
     saveSystem.setMissions({
         dateKey: board.dateKey,
         slots: board.slots.map((entry) => (entry.id === missionId ? { ...entry, claimed: true } : entry)),
     });
     if (!(await saveSystem.flush())) {
-        saveSystem.restore(previous);
+        // Delta revert, not a snapshot restore: cells earned elsewhere while
+        // the flush was in flight must survive the rollback.
+        saveSystem.revertMissionClaim({ missionId, granted });
         return { ok: false, message: "SAVE FAILED · TRY AGAIN", granted: 0 };
     }
     recordAnalytics("mission_claimed", { missionId, reward: slot.reward, granted });
