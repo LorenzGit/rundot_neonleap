@@ -12,6 +12,7 @@ import type { MissionView } from "../systems/missions.ts";
 import type { SecondWindView } from "../systems/rewardedAds.ts";
 import type { GameRecords, GameSettings } from "../systems/save.ts";
 import type { FtueHint } from "./ftue.ts";
+import { analytics } from "../systems/analytics/analyticsConfig.ts";
 
 export interface ResultsSummary {
     distance: number;
@@ -443,6 +444,8 @@ export class UiController {
 
     private show(name: ScreenName): void {
         this.screen = name;
+        // Every screen change in the game funnels through here.
+        analytics.event("screen_viewed", { screen: name });
         for (const section of this.root.querySelectorAll<HTMLElement>(".screen")) {
             section.classList.toggle("visible", section.id === `screen-${name}`);
         }

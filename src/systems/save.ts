@@ -157,6 +157,15 @@ export const saveSystem = {
             },
             wallet: { cells: state.wallet.cells + cells },
         };
+        // Canonical economy beats. Every cell in and out of the wallet passes
+        // through this module, so instrumenting the accessors covers the whole
+        // economy with no call-site left behind.
+        analytics.event("currency_earned", {
+            currency: "cell",
+            amount: cells,
+            source: "run",
+            balance_after: state.wallet.cells,
+        });
         return cells;
     },
 
@@ -168,6 +177,12 @@ export const saveSystem = {
             wallet: { cells: state.wallet.cells + granted },
             records: { ...state.records, totalCells: state.records.totalCells + granted },
         };
+        analytics.event("currency_earned", {
+            currency: "cell",
+            amount: granted,
+            source: "grant",
+            balance_after: state.wallet.cells,
+        });
         return granted;
     },
 
@@ -175,6 +190,12 @@ export const saveSystem = {
         const amount = nonNegativeInteger(cost);
         if (state.wallet.cells < amount) return false;
         state = { ...state, wallet: { cells: state.wallet.cells - amount } };
+        analytics.event("currency_spent", {
+            currency: "cell",
+            amount,
+            sink: "wallet",
+            balance_after: state.wallet.cells,
+        });
         return true;
     },
 

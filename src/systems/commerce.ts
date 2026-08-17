@@ -313,10 +313,14 @@ export async function purchaseProduct(
         runtime.controls.products[productId]?.enabled === true;
     if (!enabled || !definition || !item || !getRunCapabilities().shop || getRunCapabilities().mock) return null;
     analytics.funnelStep("purchase", 3);
-    recordAnalytics("checkout_started", { productId, placement });
+    recordAnalytics("iap_purchase_started", { productId, placement });
     const outcome = await purchaseCoordinator.purchase(productId, definition.catalogItemId);
     analytics.funnelStep("purchase", 4);
-    recordAnalytics("checkout_result", { productId, placement, result: outcome.status });
+    recordAnalytics(outcome.status === "confirmed" ? "iap_purchase_complete" : "iap_purchase_failed", {
+        productId,
+        placement,
+        result: outcome.status,
+    });
     if (isCellCache(productId)) await redeemPurchasedCells();
     return outcome;
 }
@@ -328,7 +332,7 @@ export async function reconcilePendingPurchase(): Promise<void> {
     if (!pending) return;
     const outcome = await purchaseCoordinator.reconcilePending();
     if (outcome) {
-        recordAnalytics("checkout_result", {
+        recordAnalytics(outcome.status === "confirmed" ? "iap_purchase_complete" : "iap_purchase_failed", {
             productId: pending.productId,
             placement: "resume_reconciliation",
             result: outcome.status,

@@ -150,8 +150,10 @@ for (const [funnel, step] of [
 
 // The loop, its failure, and its economy all have to report.
 for (const event of [
-    "run_start",
-    "run_end",
+    // Canonical names (RUN's core-loop query filters on an allow-list; the old
+    // run_start/run_end spellings only ever reached the 25-row custom bucket).
+    "run_started",
+    "run_completed",
     "first_gap_cleared",
     "flow_tier",
     "powerup_taken",

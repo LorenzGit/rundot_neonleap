@@ -73,6 +73,10 @@ import {
 // closes the tab mid-load will ever produce. Emissions here are buffered until
 // markTransportReady() below, once the SDK transport exists.
 analytics.installErrorCapture();
+// The browser's own end-of-session signals. onQuit alone produced two
+// session_end events across the whole fleet in thirty days, because it
+// needs a clean host quit and players just close the tab.
+analytics.installSessionEndCapture();
 // Retention: arm the 24/48/72h return cadence and attribute a
 // notification-driven launch. Both are fire-and-forget — a host without
 // notification support must not delay the first playable frame.
@@ -122,6 +126,9 @@ function updateBoot(progress: number, copy: string): void {
 }
 
 function liftBootCover(): void {
+    // The game owns the screen now; the HTML watchdog must not fire behind it.
+    const watchdog = (window as unknown as { __bootWatchdog?: number }).__bootWatchdog;
+    if (watchdog !== undefined) window.clearTimeout(watchdog);
     requestAnimationFrame(() => {
         requestAnimationFrame(() => {
             const cover = document.getElementById("boot-cover");
@@ -156,6 +163,9 @@ function startRun(): void {
     beginSecondWindRun(runKey);
     beginLeaderboardRun(runKey);
     ftue = new Ftue(saved.progress.controlsSeen);
+    // Canonical onboarding beat. ftue_completed already fires in finishCoach();
+    // kept out of Ftue itself so that module stays free of host imports.
+    if (!saved.progress.controlsSeen) analytics.event("ftue_started", { coach: "controls" });
     scene.setMode("run");
     audioManager.setMode("run");
     audioManager.setTier(0);
@@ -163,7 +173,7 @@ function startRun(): void {
     audioManager.setPaused(false);
     ui.showRunning();
     ui.showCoach(null);
-    recordAnalytics("run_start", {
+    recordAnalytics("run_started", {
         inputMode: matchMedia("(pointer: coarse)").matches ? "touch" : "keyboard",
         headStart: saved.upgrades.headStart,
         seed,
@@ -266,7 +276,7 @@ function bankRun(snapshot: RunnerSnapshot): ResultsSummary {
         audioManager.play("fanfare");
     }
     void saveSystem.flush();
-    recordAnalytics("run_end", {
+    recordAnalytics("run_completed", {
         distance: snapshot.distance,
         score: snapshot.score,
         cells: snapshot.cellsThisRun,
@@ -598,7 +608,7 @@ async function boot(): Promise<void> {
             },
             onPurchaseProduct: async (productId: CommerceProductId) => {
                 analytics.funnelStep("purchase", 2);
-                recordAnalytics("purchase_tapped", { productId, placement: "upgrade_bay" });
+                recordAnalytics("offer_clicked", { productId, placement: "upgrade_bay" });
                 const outcome = await purchaseProduct(productId, "upgrade_bay");
                 if (!outcome) return "PURCHASE CURRENTLY UNAVAILABLE";
                 await refreshCommerce();
@@ -631,14 +641,14 @@ async function boot(): Promise<void> {
             },
             onMonetizationSurfaceViewed: (surfaceId) => {
                 analytics.funnelStep("purchase", 1);
-                recordAnalytics("monetization_surface_viewed", {
+                recordAnalytics("store_opened", {
                     surfaceId,
                     placement: `${surfaceId}_screen`,
                     progression: saveSystem.get().records.bestDistance,
                 });
             },
             onAdOfferViewed: (status) => {
-                recordAnalytics("ad_offer_viewed", {
+                recordAnalytics("offer_shown", {
                     placementId: "rewarded_second_wind",
                     adType: "rewarded",
                     rewardId: "second_wind_revive",
@@ -708,7 +718,7 @@ async function boot(): Promise<void> {
         },
     });
 
-    recordAnalytics("game_loaded", {
+    recordAnalytics("game_opened", {
         version: __APP_VERSION__,
         saveSource,
         orientation: scene.getViewport().orientation,

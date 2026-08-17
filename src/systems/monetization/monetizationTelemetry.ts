@@ -1,16 +1,25 @@
 /** Stable, best-effort monetization events. Never use these as an ownership ledger. */
 
 export type MonetizationEventName =
-    | "monetization_surface_viewed"
-    | "offer_viewed"
-    | "purchase_tapped"
-    | "checkout_started"
+    | "store_opened"
+    | "offer_shown"
+    | "offer_clicked"
+    | "iap_purchase_started"
     | "checkout_result"
     | "entitlement_synced"
-    | "ad_offer_viewed"
     | "ad_requested"
     | "ad_result"
-    | "reward_granted";
+    | "reward_claimed"
+    | "iap_purchase_complete"
+    | "iap_purchase_failed"
+    | "rewarded_ad_watched"
+    | "rewarded_ad_dismissed"
+    | "currency_earned"
+    | "currency_spent"
+    | "premium_purchased"
+    | "offer_dismissed"
+    | "shop_purchase"
+    | "item_equipped";
 
 export type MonetizationEventValue = string | number | boolean | null | undefined;
 export type MonetizationEventPayload = Record<string, MonetizationEventValue>;
