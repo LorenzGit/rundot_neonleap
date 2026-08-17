@@ -174,24 +174,104 @@
         <!--
             Boot watchdog.
 
-            Every recovery path in this game lives inside main.ts: the boot()
-            catch, the host handshake timeout, the asset timeouts. All of them
-            need the module bundle to have executed. When the bundle itself
-            never fetches, never parses, or throws at import time on an old
-            WebView, none of it runs and #boot-cover stays up forever with an
-            animating progress bar and no way out — the player just sees a
-            loading screen that never ends.
+            Every recovery path in this game lives inside the module bundle: the
+            boot() catch, the host handshake timeout, the asset timeouts. All of
+            them need that bundle to have executed. When it never fetches, never
+            parses, or throws at import time on an old WebView, none of it runs
+            and #boot-cover stays up forever with no way out.
 
             A classic script on purpose: it must run even when the module graph
-            is the thing that failed. Cleared by liftBootCover(), so it can
-            never fire behind a healthy boot.
+            is the thing that failed.
+
+            It does NOT decide failure on elapsed time alone. A slow connection
+            and a dead bundle look identical to a stopwatch, and firing on the
+            slow one would tell a player their game is broken while it is still
+            downloading. Instead the certain signals act immediately — the
+            script's own error event, and an uncaught module-evaluation error —
+            and the clock is only a last-resort backstop, held off while the
+            network is still delivering bytes.
+
+            Outcomes are recorded to localStorage rather than reported here: a
+            boot that failed this badly has no analytics module to report with.
+            The next successful boot picks the record up and emits it.
         -->
         <script>
             (function () {
-                var timer = window.setTimeout(function () {
+                var SLOW_MS = 8000;      // "this is taking a while", not a failure
+                var BACKSTOP_MS = 60000; // last resort, only once fetching has stopped
+                var CEILING_MS = 180000; // absolute cap, for a connection that hangs open
+                var QUIET_MS = 30000;    // no bytes and no repaint for this long = stalled
+                var lastMutationAt = Date.now();
+                var KEY = "neonleap:boot-failure:v1";
+                var boot = (window.__boot = {
+                    startedAt: Date.now(),
+                    slowMs: null,
+                    outcome: null,
+                    settled: false,
+                });
+
+                function elapsed() { return Date.now() - boot.startedAt; }
+
+                // The game paints load progress into the cover; every repaint is
+                // proof the bundle is running, which no network metric can show.
+                try {
+                    var cover0 = document.getElementById("boot-cover");
+                    if (cover0 && window.MutationObserver) {
+                        new MutationObserver(function () { lastMutationAt = Date.now(); })
+                            .observe(cover0, { subtree: true, childList: true, characterData: true, attributes: true });
+                    }
+                } catch (_) { /* observation is best-effort */ }
+
+                function coverUp() {
+                    var c = document.getElementById("boot-cover");
+                    return !!c && !c.classList.contains("hidden");
+                }
+
+                /**
+                 * Has anything happened recently?
+                 *
+                 * Three independent signs of life, because each alone lies:
+                 *  - `readyState` goes "complete" while lazy chunks are still
+                 *    being imported, so it under-reports.
+                 *  - the resource timeline records only COMPLETED requests, so a
+                 *    chunk in flight for 30s leaves a hole that looks idle.
+                 *  - so the decisive one is the boot cover itself: the game
+                 *    paints progress into it as it loads, and any mutation there
+                 *    proves the bundle is running and advancing.
+                 *
+                 * Reading a quiet moment as "dead" is the exact false positive
+                 * this watchdog must not produce, so any one of the three counts
+                 * as alive.
+                 */
+                function recentlyAlive() {
+                    if (document.readyState !== "complete") return true;
+                    if (Date.now() - lastMutationAt < QUIET_MS) return true;
+                    try {
+                        var e = performance.getEntriesByType("resource");
+                        var last = 0;
+                        for (var i = 0; i < e.length; i++) {
+                            var end = e[i].responseEnd || e[i].startTime || 0;
+                            if (end > last) last = end;
+                        }
+                        return e.length > 0 && performance.now() - last < QUIET_MS;
+                    } catch (_) { return false; }
+                }
+
+                function persist(reason) {
+                    try {
+                        window.localStorage.setItem(KEY, JSON.stringify({
+                            reason: reason, elapsed_ms: elapsed(), at: new Date().toISOString(),
+                        }));
+                    } catch (_) { /* private mode; the UI still recovers */ }
+                }
+
+                function fail(reason) {
+                    if (boot.settled || !coverUp()) return;
+                    boot.settled = true;
+                    boot.outcome = reason;
+                    persist(reason);
                     var cover = document.getElementById("boot-cover");
-                    if (!cover || cover.classList.contains("hidden")) return;
-                    var copy = document.getElementById("boot-copy");
+                    var copy = cover.querySelector("#boot-copy");
                     if (copy) copy.textContent = "COULD NOT LOAD";
                     var bar = cover.querySelector(".boot-bar");
                     if (bar && bar.parentNode) bar.parentNode.removeChild(bar);
@@ -209,8 +289,35 @@
                     retry.addEventListener("click", function () { window.location.reload(); });
                     panel.appendChild(hint);
                     panel.appendChild(retry);
-                }, 20000);
-                window.__bootWatchdog = timer;
+                    cover.setAttribute("aria-busy", "false");
+                }
+
+                // Certain signal 1: the module bundle never arrived.
+                document.addEventListener("error", function (e) {
+                    var t = e.target;
+                    if (t && t.tagName === "SCRIPT" && t.type === "module") fail("script_load_error");
+                }, true);
+
+                // Certain signal 2: it arrived and threw while evaluating.
+                window.addEventListener("error", function (e) {
+                    if (boot.settled || !coverUp()) return;
+                    if (e && e.message) fail("script_eval_error");
+                });
+
+                // Slow, but still alive — recorded, never shown as a failure.
+                window.setTimeout(function () {
+                    if (!boot.settled && coverUp()) boot.slowMs = SLOW_MS;
+                }, SLOW_MS);
+
+                // Backstop: only when nothing has arrived for a long while.
+                boot.timer = window.setTimeout(function tick() {
+                    if (boot.settled || !coverUp()) return;
+                    if (recentlyAlive() && elapsed() < CEILING_MS) {
+                        boot.timer = window.setTimeout(tick, 10000);
+                        return;
+                    }
+                    fail(elapsed() >= CEILING_MS ? "ceiling" : "timeout");
+                }, BACKSTOP_MS);
             })();
         </script>
         <script type="module" src="/src/main.ts"></script>

@@ -1,6 +1,6 @@
 {
   "name": "neonleap",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "NEONLEAP — a one-touch neon rooftop runner for RUN.world.",
   "private": true,
   "type": "module",
