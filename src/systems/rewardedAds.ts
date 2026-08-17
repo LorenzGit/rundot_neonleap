@@ -204,6 +204,10 @@ export async function claimSecondWind(
         result: completed ? "completed" : "unavailable_or_cancelled",
     });
     if (!completed) {
+        // The decline branch of the real second-wind flow. The same event in
+        // testRewardedAd() below never ships: main.ts does not import that
+        // function, so Rollup tree-shakes it out of the production bundle.
+        analytics.event("rewarded_ad_dismissed", { ad_display_id: SECOND_WIND_PLACEMENT_ID });
         rewardedReady = false;
         return { granted: false, message: "VIDEO NOT COMPLETED · NOTHING CHANGED" };
     }
