@@ -10,6 +10,7 @@ import {
     registerLifecycles,
     requestHostExit,
     triggerHaptic,
+    showContextualLikePrompt,
 } from "./sdk/runSdk.ts";
 import { analytics } from "./systems/analytics/analyticsConfig.ts";
 import {
@@ -325,6 +326,8 @@ function bankRun(snapshot: RunnerSnapshot): ResultsSummary {
         audioManager.play("fanfare");
     }
     void saveSystem.flush();
+    // Ask for the like on a win. The wrapper owns the policy (3 wins, once ever).
+    void showContextualLikePrompt();
     recordAnalytics("run_completed", {
         distance: snapshot.distance,
         score: snapshot.score,
