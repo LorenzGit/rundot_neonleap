@@ -23,7 +23,7 @@
     "typecheck": "tsc --noEmit",
     "thumbnail": "node scripts/generate-thumbnail.mjs",
     "simulate": "node --experimental-strip-types scripts/simulate.ts",
-    "test": "node scripts/check-version.mjs && node --experimental-strip-types scripts/check-safe-area.ts && node --experimental-strip-types scripts/check-save-schema.ts && node --experimental-strip-types scripts/check-daily-rewards.ts && npm run simulate",
+    "test": "node scripts/check-version.mjs && node --experimental-strip-types scripts/check-safe-area.ts && node --experimental-strip-types scripts/check-save-schema.ts && node --experimental-strip-types scripts/check-daily-rewards.ts && npm run simulate && node --experimental-strip-types --experimental-test-module-mocks --no-warnings scripts/test-save-guard.ts",
     "build": "npm run typecheck && vite build && node scripts/check-build.mjs",
     "check": "npm run format:check && npm run lint && npm run test && npm run build",
     "preview": "vite preview"
